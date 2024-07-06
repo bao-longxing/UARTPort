@@ -23,20 +23,20 @@ namespace UARTPort
             InitializeComponent();
             InitPortData();
         }
-      
+
         //串口----------------------------------------------------------------------------
 
         //刷新串口
         private void Button_ClickReflashPort(object sender, RoutedEventArgs e)
+        {
+            cbxProtNumber.Items.Clear();
+            string[] ports = SerialPort.GetPortNames();
+            foreach (string port in ports)
             {
-                cbxProtNumber.Items.Clear();
-                string[] ports = SerialPort.GetPortNames();
-                foreach (string port in ports)
-                {
-                    cbxProtNumber.Items.Add(port);
-                }
-                cbxProtNumber.SelectedIndex = 0;
+                cbxProtNumber.Items.Add(port);
             }
+            cbxProtNumber.SelectedIndex = 0;
+        }
 
         //打开串口
         private void Button_ClickOpenPort(object sender, RoutedEventArgs e)
@@ -71,19 +71,19 @@ namespace UARTPort
                     //订阅事件
                     //serialPortHelper.serialPort.DataReceived += SerialPort_DataReceived;
 
-                        //更改按钮文本
-                        btnOpenPort.Content = "关闭串口";
+                    //更改按钮文本
+                    btnOpenPort.Content = "关闭串口";
 
-                        break;
-                    case "关闭串口"://若已打开则关闭
+                    break;
+                case "关闭串口"://若已打开则关闭
 
-                        //更改按钮文本
-                        btnOpenPort.Content = "打开串口";
-                        communication.Disconnect();
+                    //更改按钮文本
+                    btnOpenPort.Content = "打开串口";
+                    communication.Disconnect();
 
-                        break;
-                    default:
-                        break;
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -122,7 +122,7 @@ namespace UARTPort
         {
             if (e.Key == Key.Enter)
             {
-                btnSendPortData_Click(sender, e);   
+                btnSendPortData_Click(sender, e);
             }
         }
         //--------------------------------------------------------------------------------
@@ -134,7 +134,7 @@ namespace UARTPort
         //初始化网口和串口控件参数
         public void InitPortData()
         {
-                //cbxPortNumber
+            //cbxPortNumber
             string[] ports = SerialPort.GetPortNames();
             foreach (string port in ports)
             {
@@ -248,10 +248,10 @@ namespace UARTPort
                             }
                             if (communication != null && communication.ConnectType == "UDP")
                             {
-                                communication.WriteData(txtInputData.Text + "\r\n",txtUdpRemoteHostAdress.Text,Convert.ToInt32(txtRemoteHostPort.Text));
+                                communication.WriteData(txtInputData.Text + "\r\n", txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
                             }
 
-                    }
+                        }
                         else
                         {
                             if (communication.isConnected && communication.ConnectType == "Serial")
@@ -266,12 +266,12 @@ namespace UARTPort
                             {
                                 communication.WriteData(txtInputData.Text, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
                             }
-                    }
+                        }
                         break;
                     case "HEX":
                         byte[] bytesToSend = communication.HexStringToByteArray(txtInputData.Text);
 
-                        if (communication != null && (communication.ConnectType == "Serial" || communication.ConnectType == "Tcp Client")) 
+                        if (communication != null && (communication.ConnectType == "Serial" || communication.ConnectType == "Tcp Client"))
                         {
                             communication.WriteHexData(bytesToSend, 0, bytesToSend.Length);
                         }
@@ -279,7 +279,7 @@ namespace UARTPort
                         {
                             communication.WriteHexData(bytesToSend, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
                         }
-                            break;
+                        break;
                     default:
                         break;
                 }
@@ -320,7 +320,7 @@ namespace UARTPort
                     lblHostAddressText.Content = "本地主机地址";
                     lblHostPortText.Content = "本地主机端口";
                     lblUdpRemoteHostAddress.Visibility = Visibility.Visible;
-                    txtUdpRemoteHostAdress.Visibility = Visibility.Visible; 
+                    txtUdpRemoteHostAdress.Visibility = Visibility.Visible;
                     cbxRemoteHostAddress.Items.Add("0.0.0.0");
                     break;
                 default:
@@ -340,14 +340,31 @@ namespace UARTPort
             }
         }
 
-        public void InitNetWork() 
+        public void InitNetWork()
         {
             try
             {
-                UdpReceiveDelegate udpReceive = new UdpReceiveDelegate(UdpReceiveCallBackMethod);
-                communication = new NetWorkHelper(udpReceive);
+                //接收函数回调
+                NetWorkReceiveDelegate netWorkReceive = new NetWorkReceiveDelegate(NetWorkReceiveCallBackMethod);
+                //连接状态回调
+                NetWorkConnectCallback netWorkConnectStateCallback = NetWorkConnectStateCallbackFunction;
+
+                communication = new NetWorkHelper(netWorkReceive);
+
+                communication.SetNetWorkCallback(netWorkConnectStateCallback);
+
+                //连接状态检测
+                netWorkConnectTimer = new Timer(NewWorkConnectStateCheckTimer, null, 0, 1000);
+
+                //控件
+                txtOutputBox.Text += string.Format("{0} 连接中....\r\n", DateTime.Now, ConnectCount);
+                btnStartNet.IsEnabled = false;
+
+
                 communication.Connect(cbxProtocolType.Text, cbxRemoteHostAddress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
-                netWorkConnectTimer = new Timer(NewWorkConnectStateCheckTimerCallback, null, 0, 1000);
+
+
+
 
                 if (communication.isConnected)
                 {
@@ -359,10 +376,38 @@ namespace UARTPort
             {
                 MessageBox.Show(e.Message);
             }
-            
+
         }
 
-     
+        public delegate void NetWorkConnectCallback();
+
+        public void NetWorkConnectStateCallbackFunction() 
+        {
+            txtOutputBox.Text += "连接成功\r\n";
+            btnStartNet.IsEnabled = true;
+            cbxProtocolType.IsEnabled = false;
+            cbxRemoteHostAddress.IsEnabled = false;
+            txtRemoteHostPort.IsEnabled = false;
+            lblNetWorkLinkState.Content = "已连接";
+            lblNetWorkLinkState.Background = Brushes.Green;
+ 
+            switch (cbxProtocolType.Text)
+            {
+                case "Tcp Client":
+                    btnStartNet.Content = "断开";
+                    break;
+                case "Tcp Servers":
+                    btnStartNet.Content = "关闭";
+                    lblTcpServersClient.Visibility = Visibility.Visible;
+                    cbxAddressOfClient.Visibility = Visibility.Visible;
+                    break;
+                case "UDP":
+                    btnStartNet.Content = "关闭";
+                    break;
+                default:
+                    break;
+            }
+        }
         //StartNet事件
         private void btnStartNet_Click(object sender, RoutedEventArgs e)
         {
@@ -379,6 +424,9 @@ namespace UARTPort
                     communication.Disconnect();
                     lblNetWorkLinkState.Content = "已断开";
                     txtOutputBox.Text += "已断开\r\n";
+                    cbxProtocolType.IsEnabled = true;
+                    cbxRemoteHostAddress.IsEnabled = true;
+                    txtRemoteHostPort.IsEnabled = true;
                     lblNetWorkLinkState.Background = Brushes.White;
                     switch (cbxProtocolType.Text)
                     {
@@ -387,6 +435,8 @@ namespace UARTPort
                             break;
                         case "Tcp Servers":
                             btnStartNet.Content = "打开";
+                            lblTcpServersClient.Visibility = Visibility.Hidden;
+                            cbxAddressOfClient.Visibility = Visibility.Hidden;
                             break;
                         case "UDP":
                             btnStartNet.Content = "打开";
@@ -409,51 +459,32 @@ namespace UARTPort
 
         //连接状态检测
         int ConnectCount = 0;
-
-            
-
-        private  void NewWorkConnectStateCheckTimerCallback(object state)
+        private  void NewWorkConnectStateCheckTimer(object state)
         {
             ConnectCount++;
-            Dispatcher.Invoke(new Action(() => { txtOutputBox.Text += string.Format("{0} 正在第{1}次检测连接\r\n", DateTime.Now, ConnectCount); }));
+
             if (communication.isConnected)
             {
-                Dispatcher.Invoke(new Action(() => 
-                { 
-                    txtOutputBox.Text += "连接成功\r\n";
-                    lblNetWorkLinkState.Content = "已连接";
-                    lblNetWorkLinkState.Background = Brushes.Green;
-                    switch (cbxProtocolType.Text)
-                    {
-                        case "Tcp Client":
-                            btnStartNet.Content = "断开";
-                            break;
-                        case "Tcp Servers":
-                            btnStartNet.Content = "关闭";
-                            break;
-                        default:
-                            break;
-                    }
-                }));
                 ConnectCount = 0; 
                 netWorkConnectTimer.Dispose();
 
             }
             if (ConnectCount >= 3)
             {
-                netWorkConnectTimer.Dispose();
-                ConnectCount = 0;
                 Dispatcher.Invoke(new Action(() => 
-                { 
+                {
+                    btnStartNet.IsEnabled = true;
                     txtOutputBox.Text += "连接超时\r\n";
                 }));
+                ConnectCount = 0;
+                netWorkConnectTimer.Dispose();
             }
         }
 
-        public delegate void UdpReceiveDelegate(byte[] receiveBytes);
+        public delegate void NetWorkReceiveDelegate(byte[] receiveBytes);
 
         //UDP接收数据回调函数
-        public void UdpReceiveCallBackMethod(byte[] receiveBytes)
+        public void NetWorkReceiveCallBackMethod(byte[] receiveBytes)
         {
             Dispatcher.Invoke(new Action(() =>
             {
@@ -472,7 +503,6 @@ namespace UARTPort
                         break;
                 }
             }));
-               // Dispatcher.Invoke(new Action(() => { txtOutputBox.Text += value; }));
         }
     }
     //--------------------------------------------------------------------------------

@@ -43,6 +43,8 @@
         <Label x:Name="lblNetWorkLinkState" Content="已断开" HorizontalAlignment="Left" Margin="45,525,0,0" VerticalAlignment="Top"/>
         <Label x:Name="lblUdpRemoteHostAddress" Content="远程主机地址：" HorizontalAlignment="Left" Margin="1003,655,0,0" VerticalAlignment="Top" Visibility="Hidden"/>
         <TextBox x:Name="txtUdpRemoteHostAdress" HorizontalAlignment="Left" Margin="1097,659,0,0" TextWrapping="Wrap" Text="127.0.0.1" VerticalAlignment="Top" Width="120" Visibility="Hidden"/>
+        <Label x:Name="lblTcpServersClient" Content="客户端：" HorizontalAlignment="Left" Margin="733,642,0,0" VerticalAlignment="Top"/>
+        <ComboBox x:Name="cbxAddressOfClient" HorizontalAlignment="Left" Margin="796,644,0,0" VerticalAlignment="Top" Width="120" SelectedIndex="0"/>
 
     </Grid>
 </Window>
