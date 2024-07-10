@@ -8,7 +8,7 @@
         Title="UARTPort" Height="896" Width="1400">
     <Grid>
         <Label Content="串口参数" HorizontalAlignment="Left" Margin="30,40,0,0" VerticalAlignment="Top"/>
-        <Rectangle HorizontalAlignment="Left" Height="266" Margin="23,65,0,0" Stroke="Black" VerticalAlignment="Top" Width="197"/>
+        <Rectangle HorizontalAlignment="Left" Height="281" Margin="23,65,0,0" Stroke="Black" VerticalAlignment="Top" Width="197"/>
         <ComboBox HorizontalAlignment="Left" Margin="85,80,0,0" VerticalAlignment="Top" Width="120"  Name="cbxProtNumber" SelectedIndex="0"/>
         <ComboBox HorizontalAlignment="Left" Margin="85,120,0,0" VerticalAlignment="Top" Width="120"  Name="cbxBaudRate" IsSynchronizedWithCurrentItem="False" SelectedIndex="7"/>
         <ComboBox HorizontalAlignment="Left" Margin="85,160,0,0" VerticalAlignment="Top" Width="120"  Name="cbxDataBit" SelectedIndex="3"/>
@@ -19,32 +19,39 @@
         <Label Content="数据位：" HorizontalAlignment="Left" Margin="30,160,0,0" VerticalAlignment="Top"/>
         <Label Content="停止位：" HorizontalAlignment="Left" Margin="30,200,0,0" VerticalAlignment="Top"/>
         <Label Content="校验位：" HorizontalAlignment="Left" Margin="30,238,0,0" VerticalAlignment="Top"/>
-        <Button Content="刷新串口" HorizontalAlignment="Left" Margin="40,278,0,0" VerticalAlignment="Top" Height="35" Width="80" Name ="btnReflashPort" Click="Button_ClickReflashPort"/>
-        <Button Content="打开串口" HorizontalAlignment="Left" Margin="125,278,0,0" VerticalAlignment="Top" Height="35" Width="80" Name = "btnOpenPort"
+        <Button Content="刷新串口" HorizontalAlignment="Left" Margin="40,284,0,0" VerticalAlignment="Top" Height="35" Width="80" Name ="btnReflashPort" Click="Button_ClickReflashPort"/>
+        <Button Content="打开串口" HorizontalAlignment="Left" Margin="125,284,0,0" VerticalAlignment="Top" Height="35" Width="80" Name = "btnOpenPort"
   Click="Button_ClickOpenPort"/>
         <TextBox x:Name="txtInputData" HorizontalAlignment="Left" Margin="270,676,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="1080" Height="166" FontSize="24" KeyDown="txtInputData_KeyDown"/>
         <Button x:Name="btnSendPortData" Content="发送数据" HorizontalAlignment="Left" Margin="1222,766,0,0" VerticalAlignment="Top" Height="68" Width="120" Click="btnSendPortData_Click"/>
-        <TextBox x:Name="txtOutputBox" HorizontalAlignment="Left" Margin="270,65,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="1080" Height="563" FontSize="24"/>
+        <TextBox x:Name="txtOutputBox" HorizontalAlignment="Left" Margin="270,65,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="1080" Height="563" FontSize="24" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
         <Button x:Name="btnSwtichInputCode" Content="ASCII" HorizontalAlignment="Left" Margin="1240,639,0,0" VerticalAlignment="Top" Height="32" Width="110" Click="btnSwtichInputCode_Click"/>
-        <Label Content="串口接收编码：" HorizontalAlignment="Left" Margin="23,346,0,0" VerticalAlignment="Top"/>
-        <Button Content="ASCII" HorizontalAlignment="Left" Margin="125,337,0,0" VerticalAlignment="Top" Height="35" Width="80" x:Name = "btnSwtichOutputCode"
+        <Label Content="接收编码：" HorizontalAlignment="Left" Margin="1194,23,0,0" VerticalAlignment="Top"/>
+        <Button Content="ASCII" HorizontalAlignment="Left" Margin="1268,18,0,0" VerticalAlignment="Top" Height="35" Width="80" x:Name = "btnSwtichOutputCode"
             Click="Button_ClickOuttputCode"/>
         <CheckBox x:Name="chkAddChangeLine" Content="发送新行" HorizontalAlignment="Left" Margin="1137,819,0,0" VerticalAlignment="Top"/>
-        <Label Content="网络参数" HorizontalAlignment="Left" Margin="30,376,0,0" VerticalAlignment="Top"/>
-        <Rectangle HorizontalAlignment="Left" Height="169" Margin="23,405,0,0" Stroke="Black" VerticalAlignment="Top" Width="197"/>
-        <ComboBox x:Name="cbxProtocolType" HorizontalAlignment="Left" Margin="93,425,0,0" VerticalAlignment="Top" Width="120" SelectedIndex="0" SelectionChanged="cbxProtocolType_SelectionChanged"/>
-        <Label Content="协议类型：" HorizontalAlignment="Left" Margin="30,425,0,0" VerticalAlignment="Top"/>
-        <Label x:Name="lblHostAddressText" Content="远程主机地址：" HorizontalAlignment="Left" Margin="30,455,0,0" VerticalAlignment="Top" RenderTransformOrigin="0.354,0.426"/>
+        <Label Content="网络参数" HorizontalAlignment="Left" Margin="30,362,0,0" VerticalAlignment="Top"/>
+        <Rectangle HorizontalAlignment="Left" Height="182" Margin="23,392,0,0" Stroke="Black" VerticalAlignment="Top" Width="197"/>
+        <ComboBox x:Name="cbxProtocolType" HorizontalAlignment="Left" Margin="94,411,0,0" VerticalAlignment="Top" Width="120" SelectedIndex="0" SelectionChanged="cbxProtocolType_SelectionChanged"/>
+        <Label Content="协议类型：" HorizontalAlignment="Left" Margin="31,411,0,0" VerticalAlignment="Top"/>
+        <Label x:Name="lblHostAddressText" Content="远程主机地址：" HorizontalAlignment="Left" Margin="33,450,0,0" VerticalAlignment="Top" RenderTransformOrigin="0.354,0.426"/>
         <Label x:Name="lblHostPortText" Content="远程主机端口：" HorizontalAlignment="Left" Margin="30,485,0,0" VerticalAlignment="Top" RenderTransformOrigin="0.354,0.426"/>
         <TextBox x:Name="txtRemoteHostPort" HorizontalAlignment="Left" Margin="117,485,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="96" RenderTransformOrigin="0.592,1.958" Height="21" Text="8080"/>
-        <ComboBox x:Name="cbxRemoteHostAddress" HorizontalAlignment="Left" Margin="117,455,0,0" VerticalAlignment="Top" Width="96" IsEditable="True" SelectedIndex="0"/>
+        <ComboBox x:Name="cbxRemoteHostAddress" HorizontalAlignment="Left" Margin="117,450,0,0" VerticalAlignment="Top" Width="96" IsEditable="True" SelectedIndex="0"/>
         <Button Content="连接" HorizontalAlignment="Left" Margin="125,520,0,0" VerticalAlignment="Top" Height="36" Width="80" x:Name = "btnStartNet"
             Click="btnStartNet_Click"/>
         <Label x:Name="lblNetWorkLinkState" Content="已断开" HorizontalAlignment="Left" Margin="45,525,0,0" VerticalAlignment="Top"/>
-        <Label x:Name="lblUdpRemoteHostAddress" Content="远程主机地址：" HorizontalAlignment="Left" Margin="1003,655,0,0" VerticalAlignment="Top" Visibility="Hidden"/>
-        <TextBox x:Name="txtUdpRemoteHostAdress" HorizontalAlignment="Left" Margin="1097,659,0,0" TextWrapping="Wrap" Text="127.0.0.1" VerticalAlignment="Top" Width="120" Visibility="Hidden"/>
+        <Label x:Name="lblUdpRemoteHostAddress" Content="UDP远程主机地址：" HorizontalAlignment="Left" Margin="966,643,0,0" VerticalAlignment="Top" Visibility="Hidden"/>
+        <TextBox x:Name="txtUdpRemoteHostAdress" HorizontalAlignment="Left" Margin="1085,646,0,0" TextWrapping="Wrap" Text="127.0.0.1" VerticalAlignment="Top" Width="120" Visibility="Hidden"/>
         <Label x:Name="lblTcpServersClient" Content="客户端：" HorizontalAlignment="Left" Margin="733,642,0,0" VerticalAlignment="Top"/>
         <ComboBox x:Name="cbxAddressOfClient" HorizontalAlignment="Left" Margin="796,644,0,0" VerticalAlignment="Top" Width="120" SelectedIndex="0"/>
+        <Label Content="FileIO" HorizontalAlignment="Left" Margin="30,590,0,0" VerticalAlignment="Top"/>
+        <Rectangle HorizontalAlignment="Left" Height="222" Margin="23,620,0,0" Stroke="Black" VerticalAlignment="Top" Width="197"/>
+        <RadioButton x:Name="rdoUseTxt" Content="txt" HorizontalAlignment="Left" Margin="45,660,0,0" VerticalAlignment="Top" GroupName="FileType" IsChecked="True"/>
+        <RadioButton x:Name="rdoUseCvs" Content="cvs" HorizontalAlignment="Left" Margin="103,660,0,0" VerticalAlignment="Top" GroupName="FileType"/>
+        <RadioButton x:Name="rdoUseExcel" Content="excel" HorizontalAlignment="Left" Margin="157,660,0,0" VerticalAlignment="Top" GroupName="FileType"/>
+        <Button x:Name="btnOpenFile" Content="打开文件" HorizontalAlignment="Left" Margin="40,766,0,0" VerticalAlignment="Top" Height="58" Width="160" Click="btnOpenFile_Click"/>
+        <Label Content="文件IO类型" HorizontalAlignment="Left" Margin="82,630,0,0" VerticalAlignment="Top"/>
 
     </Grid>
 </Window>

@@ -11,27 +11,27 @@ using static UARTPort.MainWindow;
 using System.Diagnostics;
 using System.Windows.Threading;
 using System.Threading;
+using System.Net.Http;
+using System.Net.NetworkInformation;
 namespace UARTPort
 {
-
     public abstract class ICommunication
     {
+
         public bool isConnected = false;
         public string ConnectType = string.Empty;
-        public abstract void Disconnect();
-        public abstract void WriteData(string value);
-        public abstract void WriteHexData(byte[] buffer, int offset, int count);
-        public virtual void Receive(byte[] receiveBytes) { }//NetWork
         public virtual void Connect() { }
-
         public virtual void Connect(string portName, int baudRate, Parity parity, int dataBits, StopBits stopBits) { }
-        public virtual async void Connect(string serversType, string ipAddress, int port) { }
-    
-        public virtual void SetNetWorkCallback(NetWorkConnectCallback function) { }//TCP Callback
+        public virtual void Connect(string serversType, string ipAddress, int port) { }
+        public abstract void WriteData(string value);//Serial、Tcp Client
+        public virtual void WriteData(string ipAndPort, string value) { }//Tcp Servers
         public virtual void WriteData(string value, string hostname, int port) { }//UDP
-        public virtual void WriteHexData(byte[] bytes, string hostname, int port) { }//UDP
-        
-
+        public abstract void WriteHexData(byte[] buffer, int offset, int count);//Serial、Tcp Client HEX
+        public virtual void WriteHexData(byte[] bytes, string hostname, int port) { }//UDP HEX
+        public virtual void WriteHexData(string ipAndPort, byte[] bytes) { }//TcpServer HEX
+        public virtual void SendDataToMainForm(byte[] receiveBytes) { }//NetWork
+        public virtual void SetNetWorkCallback(NetWorkConnectCallback function) { }//TCP Callback
+        public abstract void Disconnect();
         public string AcsiiToHex(string asciiString)
         {
             StringBuilder hex = new StringBuilder(asciiString.Length * 2);
@@ -67,25 +67,29 @@ namespace UARTPort
             return bytes;
         }
     }
-
-
     class NetWorkHelper : ICommunication
     {
+        ~NetWorkHelper()
+        {
+            Disconnect();
+        }
         private UdpClient udpClient;
         TcpClient tcpClient;
         TcpListener tcpListener;
-        NetworkStream NetStream;
+        NetworkStream netStream;
         NetWorkReceiveDelegate netWorkReceiveDelegate;
         NetWorkConnectCallback netWorkCallback;
-
-
+        Dictionary<string, NetworkStream> netConnectedClient = new Dictionary<string, NetworkStream>();
+        //接收数据回调
         public NetWorkHelper(NetWorkReceiveDelegate netWorkReceive) { netWorkReceiveDelegate = netWorkReceive; }
-
-        public override void SetNetWorkCallback(NetWorkConnectCallback function) 
+        //连接状态回调
+        public override void SetNetWorkCallback(NetWorkConnectCallback function)
         {
             netWorkCallback = function;
         }
 
+
+        //连接
         public override async void Connect(string serversType, string ipAddress, int port)
         {
             try
@@ -99,19 +103,7 @@ namespace UARTPort
                         netWorkCallback();
                         isConnected = true;
                         ConnectType = "Tcp Client";
-
-                        //接收
-                        if (tcpClient.Connected)
-                        {
-                            NetStream = tcpClient.GetStream();
-                        }
-                        while (isConnected)
-                        {
-                            byte[] buffer = new byte[1024];
-                            await NetStream.ReadAsync(buffer, 0, buffer.Length);
-                            Receive(buffer);
-                        }
-
+                        TcpClientRecive();
                         break;
                     case "UDP":
                         //连接
@@ -136,21 +128,21 @@ namespace UARTPort
                         break;
                     case "Tcp Servers":
                         //连接
-                        tcpListener = new TcpListener(IPAddress.Parse(ipAddress),port);
+                        tcpListener = new TcpListener(IPAddress.Parse(ipAddress), port);
                         tcpListener.Start();
                         netWorkCallback();
                         isConnected = true;
                         ConnectType = "Tcp Servers";
-                        //连接
-                        while (isConnected) 
+                        //新连接
+                        while (isConnected)
                         {
                             tcpClient = await tcpListener.AcceptTcpClientAsync();
                             IPEndPoint remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint;
-                            byte[] bytsvalue = Encoding.UTF8.GetBytes("\r\nDate:  " + DateTime.Now + "\r\nUser:  " + remoteEndPoint.ToString() + "   isOnline");
-                            Receive(bytsvalue);
-                            await TcpServerRecive(tcpClient);
+                            TcpServerRecive(tcpClient);
                         }
                         //接收
+
+
                         break;
                     default:
                         break;
@@ -163,43 +155,119 @@ namespace UARTPort
                     Debug.WriteLine(e.Message);
                     return;
                 }
+                if (e.Message == "由于线程退出或应用程序请求，已中止 I/O 操作。")
+                {
+                    Debug.WriteLine(e.Message);
+                    return;
+                }
                 MessageBox.Show(e.Message);
             }
         }
-        
-        //Tcp Server接收
-        public async Task TcpServerRecive(TcpClient client) 
+        //断开
+        public override void Disconnect()
         {
-            byte[] buffer = new byte[1024];
+            if (netStream != null)
+            {
+                netStream.Close();
+            }
+            if (udpClient != null)
+            {
+                udpClient.Close();
+            }
+            if (tcpClient != null)
+            {
+                tcpClient.Dispose();
+                tcpClient.Close();
+            }
+            if (tcpListener != null)
+            {
+                tcpListener.Dispose();
+                tcpListener.Stop();
+                tcpListener = null;
+            }
+            isConnected = false;
+            ConnectType = string.Empty;
+        }
+
+        //Tcp Server 接收
+        public async void TcpServerRecive(TcpClient client)
+        {
+            IPEndPoint remoteEndPoint = (IPEndPoint)client.Client.RemoteEndPoint;
 
             NetworkStream stream = client.GetStream();
 
-            while (true) 
+            netConnectedClient.Add(remoteEndPoint.ToString(), stream);
+
+            byte[] bytsvalue = Encoding.UTF8.GetBytes("\r\nServers: Client Online" + "\r\nDate:  " + DateTime.Now + "\r\nClient:  " + remoteEndPoint.ToString());
+
+            SendDataToMainForm(bytsvalue);
+
+            byte[] buffer = new byte[1024];
+
+            while (true)
             {
-                if (!stream.CanRead)
+                try
                 {
-                    int bytesReadLength = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    byte[] result = new byte[bytesReadLength];
-                    Array.Copy(buffer, result, bytesReadLength);
-                    Receive(result);
-                    //设备下线通知
+                    int numberOfRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+
+                    if (numberOfRead != 0)
+                    {
+                        byte[] result = new byte[numberOfRead];
+                        Array.Copy(buffer, result, numberOfRead);
+                        SendDataToMainForm(result);
+                    }
+                    else
+                    {
+                        //设备下线
+                        bytsvalue = Encoding.UTF8.GetBytes("\r\nServers: Client Offline" + "\r\nDate:  " + DateTime.Now + "\r\nClient:  " + remoteEndPoint.ToString());
+                        netConnectedClient.Remove(remoteEndPoint.ToString());
+                        SendDataToMainForm(bytsvalue);
+                        break;
+                    }
+                }
+
+                catch (Exception e)
+                {
+                    Debug.WriteLine(e);
+                }
+
+
+            }
+        }
+        //Tcp Client 接收
+        public async void TcpClientRecive()
+        {
+            //接收
+            if (tcpClient.Connected)
+            {
+                netStream = tcpClient.GetStream();
+            }
+            while (isConnected)
+            {
+                if (!tcpClient.Client.Poll(1, SelectMode.SelectRead))
+                {
+                    byte[] buffer = new byte[1024];
+                    await netStream.ReadAsync(buffer, 0, buffer.Length);
+                    SendDataToMainForm(buffer);
                 }
                 else
                 {
+                    IPEndPoint remoteEndPoint = (IPEndPoint)tcpClient.Client.RemoteEndPoint;
+                    byte[] bytsvalue = Encoding.UTF8.GetBytes("\r\nServers: Client Offline" + "\r\nDate:  " + DateTime.Now + "\r\nClient:  " + remoteEndPoint.ToString());
+                    SendDataToMainForm(bytsvalue);
                     break;
                 }
 
             }
         }
-
-        //UDP接收回调
+        //UDP        接收 
         private void UdpReceiveCallback(IAsyncResult ar)
         {
             try
             {
                 IPEndPoint endPoint = new IPEndPoint(IPAddress.Any, 0);
                 byte[] receiveBytes = udpClient.EndReceive(ar, ref endPoint);
-                Receive(receiveBytes); 
+                SendDataToMainForm(receiveBytes);
                 udpClient.BeginReceive(UdpReceiveCallback, null);
             }
             catch (Exception e)
@@ -208,74 +276,53 @@ namespace UARTPort
             }
 
         }
-        public override void Receive(byte[] receiveBytes)
+
+        //接收并调用窗口类的委托
+        public override void SendDataToMainForm(byte[] receiveBytes)
         {
             netWorkReceiveDelegate(receiveBytes);
         }
-        ~NetWorkHelper() 
-        {
-            Disconnect();
-        }
 
-        
-  
-        public override void Disconnect()
-        {
-            if (NetStream!=null)
-            {
-                NetStream.Close();
-            }
-            if (udpClient!=null)
-            {
-                udpClient.Close();
-            }
-            if (tcpClient!=null)
-            {
-                tcpClient.Dispose();
-                tcpClient.Close();
-            }
-            isConnected = false;
-            ConnectType = string.Empty;
-        }
-
-        public override void WriteData(string value) //TCP
+        //TCP           ASCII发送
+        public override void WriteData(string value) 
         {
             byte[] data = Encoding.ASCII.GetBytes(value);
-
-            switch (ConnectType)
-            {
-                case "Tcp Client":
-                    if (NetStream.CanWrite)
-                    {
-                        NetStream.Write(data, 0, data.Length);
-                    }
-                    break;
-                default:
-                    break;
-            }
-            
+            netStream.Write(data, 0, data.Length);
         }
-        public override void WriteData(string value,string hostname,int port) //UDP
+        //UDP           ASCII发送
+        public override void WriteData(string value, string hostname, int port)
         {
             byte[] data = Encoding.ASCII.GetBytes(value);
 
             udpClient.Send(data, data.Length, hostname, port);
         }
+        //TcpServers    ACSII发送
+        public override void WriteData(string ipAndPort, string value)
+        {
+            byte[] buffer = Encoding.UTF8.GetBytes(value);
+            netConnectedClient[ipAndPort].Write(buffer, 0, buffer.Length);
+        }
+        //TcpServers    HEX发送
+        public override void WriteHexData(string ipAndPort, byte[] bytes)
+        {
+            netConnectedClient[ipAndPort].Write(bytes, 0, bytes.Length);
+        }
+        //UDP           HEX发送
         public override void WriteHexData(byte[] buffer, string hostname, int port)
         {
             udpClient.Send(buffer, buffer.Length, hostname, port);
         }
+        //Tcp           HEX发送
         public override void WriteHexData(byte[] buffer, int offset, int count)
         {
-            
-            NetStream = tcpClient.GetStream();
 
-            if (NetStream.CanWrite)
+            netStream = tcpClient.GetStream();
+
+            if (netStream.CanWrite)
             {
-                NetStream.Write(buffer, offset, count);
+                netStream.Write(buffer, offset, count);
             }
         }
-        
     }
     class SerialPortHelper : ICommunication
     {
@@ -283,7 +330,7 @@ namespace UARTPort
         public SerialPort serialPort;
         SerialPortHelper_DataReceived serialCallback;
 
-        public SerialPortHelper(string portName, int baudRate, Parity parity, int dataBits, StopBits stopBits ,SerialPortHelper_DataReceived serialDelegate) 
+        public SerialPortHelper(string portName, int baudRate, Parity parity, int dataBits, StopBits stopBits, SerialPortHelper_DataReceived serialDelegate)
         {
             serialPort = new SerialPort();
             serialPort.PortName = portName;
@@ -293,7 +340,8 @@ namespace UARTPort
             serialPort.StopBits = stopBits;
             serialCallback = serialDelegate;
         }
-        public override void Connect() 
+        //连接
+        public override void Connect()
         {
             try
             {
@@ -307,14 +355,14 @@ namespace UARTPort
                 MessageBox.Show(e.Message);
             }
         }
-
+        //断开
         public override void Disconnect()
         {
             try
             {
                 serialPort.Close();
                 isConnected = false;
-                ConnectType=string.Empty;
+                ConnectType = string.Empty;
                 serialPort.DataReceived -= SerialPort_DataReceived;
             }
             catch (Exception e)
@@ -322,12 +370,13 @@ namespace UARTPort
                 MessageBox.Show(e.Message);
             }
         }
+        //接收
         private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
-            serialCallback(sender,e);
+            serialCallback(sender, e);
         }
-
-        public  override void WriteData(string value) 
+        //写入ASCII
+        public override void WriteData(string value)
         {
             if (serialPort.IsOpen)
             {
@@ -335,6 +384,7 @@ namespace UARTPort
             }
 
         }
+        //写入HEX
         public override void WriteHexData(byte[] buffer, int offset, int count)
         {
             if (serialPort.IsOpen)
@@ -342,9 +392,5 @@ namespace UARTPort
                 serialPort.Write(buffer, offset, count);
             }
         }
-        
-
-        
-
     }
 }

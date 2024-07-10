@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Drawing;
 using System.Windows.Media;
 using System.Text;
+using Microsoft.Win32;
 namespace UARTPort
 {
     /// <summary>
@@ -18,14 +19,30 @@ namespace UARTPort
     {
         private ICommunication communication;
         private static Timer netWorkConnectTimer;
+        private FileIOMannager fileIOMannager;
+        private FileIOFactor fileFactor;
         public MainWindow()
         {
             InitializeComponent();
-            InitPortData();
+            InitPortAndNetWorkData();
+
+            //File
+            fileFactor = new FileIOFactor();
+            this.Closing += MainWindow_Closing;
         }
 
-        //串口----------------------------------------------------------------------------
+        //在窗口关闭前关闭文件类避免保存失败
+        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (fileIOMannager!=null)
+            {
+                fileIOMannager.Close();
+            }
+        }
 
+
+        //串口相关--------------------------------------------------------------------------------------------------------------------------------------------------------
+        
         //刷新串口
         private void Button_ClickReflashPort(object sender, RoutedEventArgs e)
         {
@@ -37,7 +54,7 @@ namespace UARTPort
             }
             cbxProtNumber.SelectedIndex = 0;
         }
-
+        
         //打开串口
         private void Button_ClickOpenPort(object sender, RoutedEventArgs e)
         {
@@ -67,27 +84,56 @@ namespace UARTPort
 
                     communication.Connect();
 
+                    InitFileIO();//文件IO
 
-                    //订阅事件
-                    //serialPortHelper.serialPort.DataReceived += SerialPort_DataReceived;
-
-                    //更改按钮文本
-                    btnOpenPort.Content = "关闭串口";
-
+                    SerialUIDisable();
                     break;
-                case "关闭串口"://若已打开则关闭
-
-                    //更改按钮文本
-                    btnOpenPort.Content = "打开串口";
+                case "关闭串口":
+                    fileIOMannager.Close();
+                    fileIOMannager = null;
+                    SerialUIEnable();
                     communication.Disconnect();
-
                     break;
                 default:
                     break;
             }
         }
-
+        
+        //串口控件
+        public void SerialUIEnable() 
+        {
+            btnOpenPort.Content = "打开串口";
+            btnReflashPort.IsEnabled = true;
+            cbxParity.IsEnabled = true;
+            cbxDataBit.IsEnabled = true;
+            cbxStopBit.IsEnabled = true;
+            cbxBaudRate.IsEnabled = true;
+            cbxProtNumber.IsEnabled = true;
+            rdoUseCvs.IsEnabled = true;
+            rdoUseExcel.IsEnabled = true;
+            rdoUseTxt.IsEnabled = true;
+            btnStartNet.IsEnabled = true;
+        }
+        
+        //串口控件
+        public void SerialUIDisable() 
+        {
+            btnOpenPort.Content = "关闭串口";
+            btnReflashPort.IsEnabled = false;
+            cbxParity.IsEnabled = false;
+            cbxDataBit.IsEnabled = false;
+            cbxStopBit.IsEnabled = false;
+            cbxBaudRate.IsEnabled = false;
+            cbxProtNumber.IsEnabled=false; 
+            rdoUseTxt.IsEnabled = false;
+            rdoUseCvs.IsEnabled = false;
+            rdoUseExcel .IsEnabled = false;
+            btnStartNet.IsEnabled = false;
+        }
+       
+        //串口事件委托
         public delegate void SerialPortHelper_DataReceived(object sender, System.IO.Ports.SerialDataReceivedEventArgs e);
+        
         //串口接收事件
         private void SerialPort_DataReceived(object sender, System.IO.Ports.SerialDataReceivedEventArgs e)
         {
@@ -100,13 +146,16 @@ namespace UARTPort
                         string data = sp.ReadExisting();
                         txtOutputBox.Text += data;
                         txtOutputBox.ScrollToEnd();
+                        WriteSerialDataLogToFile(data,"Receive");
                         break;
                     case "HEX":
                         int byteToRead = sp.BytesToRead;
                         byte[] buffer = new byte[byteToRead];
                         sp.Read(buffer, 0, byteToRead);
-                        txtOutputBox.Text += " " + BitConverter.ToString(buffer).Replace("-", " ");
+                        string value_str = " " + BitConverter.ToString(buffer).Replace("-", " ");
+                        txtOutputBox.Text += value_str;
                         txtOutputBox.ScrollToEnd();
+                        WriteSerialDataLogToFile(value_str, "Receive");
                         break;
                     default:
                         break;
@@ -115,9 +164,393 @@ namespace UARTPort
             }));
 
         }
+        
+        //串口日志写入文件
+        public void WriteSerialDataLogToFile(string value,string Send_ReceiveStateFlag) 
+        {
+            string writeValue = "ReceivePort="  + cbxProtNumber.Text + "\r\n"
+                                + "Date=" + DateTime.Now + "\r\n"
+                                + "State=" + Send_ReceiveStateFlag + "\r\n"
+                                + "Data=" + value + "\r\n"; //文件IO
+            fileIOMannager.Write(writeValue);
+        }
+        //------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-        //重写回车
+        //网口相关------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+        //基本功能
+        int ConnectCount = 0;//连接检测次数
+
+        //初始化网口类
+        public void InitNetWork()
+        {
+            try
+            {
+                //接收函数回调
+                NetWorkReceiveDelegate netWorkReceive = new NetWorkReceiveDelegate(NetWorkReceiveCallBackMethod);
+                //连接状态回调
+                NetWorkConnectCallback netWorkConnectStateCallback = NetWorkConnectStateCallbackFunction;
+
+                communication = new NetWorkHelper(netWorkReceive);
+
+                communication.SetNetWorkCallback(netWorkConnectStateCallback);
+
+                //连接状态检测
+                netWorkConnectTimer = new Timer(NewWorkConnectStateCheckTimer, null, 0, 1000);
+
+                //控件
+                txtOutputBox.Text += string.Format("{0} 连接中....\r\n", DateTime.Now, ConnectCount);
+                btnStartNet.IsEnabled = false;
+
+
+                communication.Connect(cbxProtocolType.Text, cbxRemoteHostAddress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
+
+
+
+
+                if (communication.isConnected)
+                {
+                    btnStartNet.Content = "关闭";
+                }
+                //communication.UdpReceiveNotify += NetWorkHelper_UdpReceiveNotify;
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.Message);
+            }
+
+        }
+
+        //断开连接
+        public void Disconnenct()
+        {
+            communication.Disconnect();
+            NetWorkUIForDisconnected();
+        }
+
+        //连接检测
+        private void NewWorkConnectStateCheckTimer(object state)
+        {
+            ConnectCount++;
+
+            if (communication.isConnected)
+            {
+                ConnectCount = 0;
+                netWorkConnectTimer.Dispose();
+
+            }
+            if (ConnectCount >= 3)
+            {
+                Dispatcher.Invoke(new Action(() =>
+                {
+                    btnStartNet.IsEnabled = true;
+                    txtOutputBox.Text += "连接超时\r\n";
+                }));
+                ConnectCount = 0;
+                netWorkConnectTimer.Dispose();
+            }
+        }
+
+        //UI
+
+        //已连接时的UI设置
+        public void NetWorkUIForConnected()
+        {
+            txtOutputBox.Text += "连接成功\r\n";
+            btnStartNet.IsEnabled = true;
+            cbxProtocolType.IsEnabled = false;
+            cbxRemoteHostAddress.IsEnabled = false;
+            txtRemoteHostPort.IsEnabled = false;
+            lblNetWorkLinkState.Content = "已连接";
+            lblNetWorkLinkState.Background = System.Windows.Media.Brushes.Green;
+            rdoUseCvs.IsEnabled = false;
+            rdoUseExcel.IsEnabled = false;
+            rdoUseTxt.IsEnabled = false;
+            btnOpenPort.IsEnabled = false;
+            switch (cbxProtocolType.Text)
+            {
+                case "Tcp Client":
+                    btnStartNet.Content = "断开";
+                    break;
+                case "Tcp Servers":
+                    btnStartNet.Content = "关闭";
+                    lblTcpServersClient.Visibility = Visibility.Visible;
+                    cbxAddressOfClient.Visibility = Visibility.Visible;
+                    break;
+                case "UDP":
+                    btnStartNet.Content = "关闭";
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        //断开连接时的UI设置
+        public void NetWorkUIForDisconnected()
+        {
+            lblNetWorkLinkState.Content = "已断开";
+            txtOutputBox.Text += "已断开\r\n";
+            cbxProtocolType.IsEnabled = true;
+            cbxRemoteHostAddress.IsEnabled = true;
+            txtRemoteHostPort.IsEnabled = true;
+            lblNetWorkLinkState.Background = System.Windows.Media.Brushes.White;
+            rdoUseCvs.IsEnabled = true;
+            rdoUseExcel.IsEnabled = true;
+            rdoUseTxt.IsEnabled = true;
+            btnOpenPort.IsEnabled = true;
+            switch (cbxProtocolType.Text)
+            {
+                case "Tcp Client":
+                    btnStartNet.Content = "连接";
+                    break;
+                case "Tcp Servers":
+                    btnStartNet.Content = "打开";
+                    lblTcpServersClient.Visibility = Visibility.Hidden;
+                    cbxAddressOfClient.Visibility = Visibility.Hidden;
+                    break;
+                case "UDP":
+                    btnStartNet.Content = "打开";
+                    break;
+                default:
+                    break;
+            }
+        }
+        //使用Client时的UI设置
+        public void SetUIForTcpClient()
+        {
+            btnStartNet.Content = "连接";
+            lblHostAddressText.Content = "远程主机地址";
+            lblHostPortText.Content = "远程主机端口";
+            lblUdpRemoteHostAddress.Visibility = Visibility.Hidden;
+            txtUdpRemoteHostAdress.Visibility = Visibility.Hidden;
+            lblTcpServersClient.Visibility = Visibility.Hidden;
+            cbxAddressOfClient.Visibility = Visibility.Hidden;
+            RemoveIpForZero();
+        }
+
+        //使用Servers时的UI设置
+        public void SetUIForTcpServers()
+        {
+            btnStartNet.Content = "打开";
+            lblHostAddressText.Content = "本地主机地址";
+            lblHostPortText.Content = "本地主机端口";
+            lblUdpRemoteHostAddress.Visibility = Visibility.Hidden;
+            txtUdpRemoteHostAdress.Visibility = Visibility.Hidden;
+            lblTcpServersClient.Visibility = Visibility.Visible;
+            cbxAddressOfClient.Visibility = Visibility.Visible;
+            RemoveIpForZero();
+        }
+
+        //使用UDP时的UI设置
+        public void SetUIForUDP()
+        {
+            btnStartNet.Content = "打开";
+            lblHostAddressText.Content = "本地主机地址";
+            lblHostPortText.Content = "本地主机端口";
+            lblUdpRemoteHostAddress.Visibility = Visibility.Visible;
+            txtUdpRemoteHostAdress.Visibility = Visibility.Visible;
+            lblTcpServersClient.Visibility = Visibility.Hidden;
+            cbxAddressOfClient.Visibility = Visibility.Hidden;
+            cbxRemoteHostAddress.Items.Add("0.0.0.0");
+        }
+
+        //移除Ip项0.0.0.0
+        public void RemoveIpForZero()
+        {
+            // Remove IP address "0.0.0.0" if exists
+            if (cbxRemoteHostAddress.Items.Contains("0.0.0.0"))
+            {
+                cbxRemoteHostAddress.Items.Remove("0.0.0.0");
+            }
+        }
+
+        //协议选择事件
+        private void cbxProtocolType_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            string selectedItem = cbxProtocolType.SelectedItem.ToString();
+
+            switch (selectedItem)
+            {
+                case "Tcp Client":
+                    SetUIForTcpClient();
+                    break;
+                case "Tcp Servers":
+                    SetUIForTcpServers();
+                    break;
+                case "UDP":
+                    SetUIForUDP();
+                    break;
+                default:
+                    btnStartNet.Content = "连接";
+                    break;
+            }
+        }
+
+        //回调、事件及委托
+
+        //网口回调委托
+        public delegate void NetWorkConnectCallback();
+
+        //网口连接状态回调
+        public void NetWorkConnectStateCallbackFunction()
+        {
+            NetWorkUIForConnected();
+        }
+
+        //接收回调委托
+        public delegate void NetWorkReceiveDelegate(byte[] receiveBytes);
+
+        //接收数据回调
+        public void NetWorkReceiveCallBackMethod(byte[] receiveBytes)
+        {
+            string tempStringValue = Encoding.ASCII.GetString(receiveBytes);
+
+            //Tcp Client 下线
+            if (tempStringValue.Contains("Servers: Client Offline"))
+            {
+                //避免通知消息被转换为HEX
+                btnSwtichOutputCode.Content = "ASCII";
+                string searchValue = "Client:  ";
+                int strIndex = tempStringValue.IndexOf(searchValue);
+                string endPointString = tempStringValue.Substring(strIndex + 9);
+                cbxAddressOfClient.Items.Remove(endPointString);
+            }
+
+            //Tcp Client 上线
+            if (tempStringValue.Contains("Servers: Client Online"))
+            {
+                btnSwtichOutputCode.Content = "ASCII";
+                if (cbxAddressOfClient.SelectedIndex == -1)
+                {
+                    cbxAddressOfClient.SelectedIndex = 0;
+                }
+                string searchValue = "Client:  ";
+                int strIndex = tempStringValue.IndexOf(searchValue);
+                string endPointString = tempStringValue.Substring(strIndex + 9);
+                cbxAddressOfClient.Items.Add(endPointString);
+            }
+
+            Dispatcher.Invoke(new Action(() =>
+            {
+                switch (btnSwtichOutputCode.Content.ToString() ?? string.Empty.ToUpper())
+                {
+                    case "ASCII":
+                        string receiveString = Encoding.ASCII.GetString(receiveBytes);
+                        txtOutputBox.Text += receiveString;
+                        txtOutputBox.ScrollToEnd();
+                        break;
+                    case "HEX":
+                        txtOutputBox.Text += " " + BitConverter.ToString(receiveBytes).Replace("-", " ");
+                        txtOutputBox.ScrollToEnd();
+                        break;
+                    default:
+                        break;
+                }
+            }));
+        }
+
+        //连接按钮事件
+        private void btnStartNet_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (communication == null)
+                {
+                    InitNetWork();
+                    InitFileIO();
+                    return;
+                }
+
+                if (communication.isConnected)
+                {
+                    fileIOMannager.Close();
+                    Disconnenct();
+                }
+                else
+                {
+                    InitFileIO();
+                    InitNetWork();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+                return;
+            }
+        }
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+        //文件相关----------------------------------------------------------------------------------------------------------------------------------------------------------
+       
+        bool isOnlyRead = false;//只读打开标志用于在没有打开任何连接时初始化文件类
+
+        //打开文件事件
+        private void btnOpenFile_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (fileIOMannager == null)
+                {
+                    isOnlyRead = true;
+                    InitFileIO(isOnlyRead);
+                }
+                OpenFileDialog openFileDialog = new OpenFileDialog();
+                openFileDialog.InitialDirectory = AppContext.BaseDirectory;
+                switch (fileIOMannager.FileIOType)
+                {
+                    case "txt":
+                        openFileDialog.Filter = "文本文件|*.txt|所有文件|*.*";
+                        break;
+                    case "csv":
+                        openFileDialog.Filter = "CSV文件|*.csv|所有文件|*.*";
+                        break;
+                    case "excel":
+                        openFileDialog.Filter = "Excel表格|*.xls;*.xlsx|所有文件|*.*";
+                        break;
+                    default:
+                        break;
+                }
+                openFileDialog.RestoreDirectory = true;
+
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    string selectedFileName = openFileDialog.FileName;
+                    txtOutputBox.Text = fileIOMannager.Read(selectedFileName);
+                }
+                if (isOnlyRead)
+                {
+                    fileIOMannager.Close();
+                    fileIOMannager = null;
+                    isOnlyRead = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+
+        //初始化文件类
+        public void InitFileIO(bool isReadOnly = false)
+        {
+            //文件IO
+            string fileType = (bool)rdoUseCvs.IsChecked ? "csv" : (bool)rdoUseExcel.IsChecked ? "excel" : "txt";
+            fileIOMannager = fileFactor.CreateFileIO(fileType);
+            if (isReadOnly == false)
+            {
+                fileIOMannager.InitFileAddressAndStreamClass();
+            }
+        }
+
+        //----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+        //串口和网口公用方法--------------------------------------------------------------------------------------------------------------------------------------------------------
+        
+        //回车发送
         private void txtInputData_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
@@ -125,14 +558,8 @@ namespace UARTPort
                 btnSendPortData_Click(sender, e);
             }
         }
-        //--------------------------------------------------------------------------------
-
-
-
-        //通用----------------------------------------------------------------------------
-
         //初始化网口和串口控件参数
-        public void InitPortData()
+        public void InitPortAndNetWorkData()
         {
             //cbxPortNumber
             string[] ports = SerialPort.GetPortNames();
@@ -230,54 +657,84 @@ namespace UARTPort
         //发送事件
         private void btnSendPortData_Click(object sender, RoutedEventArgs e)
         {
-            bool isChecked = chkAddChangeLine.IsChecked.GetValueOrDefault();//新行
+            bool newRowIsChecked = chkAddChangeLine.IsChecked.GetValueOrDefault();//新行
             try
             {
                 switch (btnSwtichInputCode.Content.ToString() ?? string.Empty.ToUpper())
                 {
                     case "ASCII":
-                        if (isChecked)
+                        if (newRowIsChecked)    
                         {
-                            if (communication.isConnected)
+                            if (communication.isConnected && communication != null)
                             {
-                                communication.WriteData(txtInputData.Text + "\r\n");
-                            }
-                            if (communication != null && communication.ConnectType == "Tcp Client")
-                            {
-                                communication.WriteData(txtInputData.Text + "\r\n");
-                            }
-                            if (communication != null && communication.ConnectType == "UDP")
-                            {
-                                communication.WriteData(txtInputData.Text + "\r\n", txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
-                            }
+                                string inputDataToSend = txtInputData.Text + "\r\n";
 
+                                switch (communication.ConnectType)
+                                {
+                                    case "Serial":
+                                        communication.WriteData(inputDataToSend);
+                                        WriteSerialDataLogToFile(inputDataToSend, "Send");
+                                        break;
+                                    case "Tcp Client":
+                                        communication.WriteData(inputDataToSend);
+                                        break;
+                                    case "Tcp Servers":
+                                        communication.WriteData(cbxAddressOfClient.Text, inputDataToSend);
+                                        break;
+                                    case "UDP":
+                                        communication.WriteData(inputDataToSend, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
+                                        break;
+                                    default:
+                                        break;
+                                }
+                            }
                         }
                         else
                         {
-                            if (communication.isConnected && communication.ConnectType == "Serial")
+                            if (communication.isConnected && communication != null)
                             {
-                                communication.WriteData(txtInputData.Text);
-                            }
-                            if (communication != null && communication.ConnectType == "Tcp Client")
-                            {
-                                communication.WriteData(txtInputData.Text);
-                            }
-                            if (communication != null && communication.ConnectType == "UDP")
-                            {
-                                communication.WriteData(txtInputData.Text, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
+                                string inputDataToSend = txtInputData.Text;
+
+                                switch (communication.ConnectType)
+                                {
+                                    case "Serial":
+                                        WriteSerialDataLogToFile(inputDataToSend, "Send");
+                                        communication.WriteData(inputDataToSend);
+                                        break;
+                                    case "Tcp Client":
+                                        communication.WriteData(inputDataToSend);
+                                        break;
+                                    case "Tcp Servers":
+                                        communication.WriteData(cbxAddressOfClient.Text, inputDataToSend);
+                                        break;
+                                    case "UDP":
+                                        communication.WriteData(inputDataToSend, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
+                                        break;
+                                    default:
+                                        break;
+                                }
                             }
                         }
                         break;
                     case "HEX":
                         byte[] bytesToSend = communication.HexStringToByteArray(txtInputData.Text);
 
-                        if (communication != null && (communication.ConnectType == "Serial" || communication.ConnectType == "Tcp Client"))
+                        if (communication != null)
                         {
-                            communication.WriteHexData(bytesToSend, 0, bytesToSend.Length);
-                        }
-                        if (communication != null && communication.ConnectType == "UDP")
-                        {
-                            communication.WriteHexData(bytesToSend, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
+                            string connectType = communication.ConnectType;
+
+                            if (connectType == "Serial" || connectType == "Tcp Client")
+                            {
+                                communication.WriteHexData(bytesToSend, 0, bytesToSend.Length);
+                            }
+                            else if (connectType == "UDP")
+                            {
+                                communication.WriteHexData(bytesToSend, txtUdpRemoteHostAdress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
+                            }
+                            else if (connectType == "Tcp Servers")
+                            {
+                                communication.WriteHexData(cbxAddressOfClient.Text, bytesToSend);
+                            }
                         }
                         break;
                     default:
@@ -290,220 +747,7 @@ namespace UARTPort
             }
 
         }
-        //--------------------------------------------------------------------------------
 
-        //NetWork----------------------------------------------------------------------------
-
-        //协议选择
-        private void cbxProtocolType_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            switch (cbxProtocolType.SelectedItem.ToString())
-            {
-                case "Tcp Client":
-                    btnStartNet.Content = "连接";
-                    lblHostAddressText.Content = "远程主机地址";
-                    lblHostPortText.Content = "远程主机端口";
-                    lblUdpRemoteHostAddress.Visibility = Visibility.Hidden;
-                    txtUdpRemoteHostAdress.Visibility = Visibility.Hidden;
-                    RemoveIpForZero();
-                    break;
-                case "Tcp Servers":
-                    btnStartNet.Content = "打开";
-                    lblHostAddressText.Content = "本地主机地址";
-                    lblHostPortText.Content = "本地主机端口";
-                    lblUdpRemoteHostAddress.Visibility = Visibility.Hidden;
-                    txtUdpRemoteHostAdress.Visibility = Visibility.Hidden;
-                    RemoveIpForZero();
-                    break;
-                case "UDP":
-                    btnStartNet.Content = "打开";
-                    lblHostAddressText.Content = "本地主机地址";
-                    lblHostPortText.Content = "本地主机端口";
-                    lblUdpRemoteHostAddress.Visibility = Visibility.Visible;
-                    txtUdpRemoteHostAdress.Visibility = Visibility.Visible;
-                    cbxRemoteHostAddress.Items.Add("0.0.0.0");
-                    break;
-                default:
-                    btnStartNet.Content = "连接";
-                    break;
-            }
-        }
-
-        //Remove0.0.0.0
-        public void RemoveIpForZero()
-        {
-            int index = cbxRemoteHostAddress.Items.IndexOf("0.0.0.0");
-
-            if (index >= 0)
-            {
-                cbxRemoteHostAddress.Items.RemoveAt(index);
-            }
-        }
-
-        public void InitNetWork()
-        {
-            try
-            {
-                //接收函数回调
-                NetWorkReceiveDelegate netWorkReceive = new NetWorkReceiveDelegate(NetWorkReceiveCallBackMethod);
-                //连接状态回调
-                NetWorkConnectCallback netWorkConnectStateCallback = NetWorkConnectStateCallbackFunction;
-
-                communication = new NetWorkHelper(netWorkReceive);
-
-                communication.SetNetWorkCallback(netWorkConnectStateCallback);
-
-                //连接状态检测
-                netWorkConnectTimer = new Timer(NewWorkConnectStateCheckTimer, null, 0, 1000);
-
-                //控件
-                txtOutputBox.Text += string.Format("{0} 连接中....\r\n", DateTime.Now, ConnectCount);
-                btnStartNet.IsEnabled = false;
-
-
-                communication.Connect(cbxProtocolType.Text, cbxRemoteHostAddress.Text, Convert.ToInt32(txtRemoteHostPort.Text));
-
-
-
-
-                if (communication.isConnected)
-                {
-                    btnStartNet.Content = "关闭";
-                }
-                //communication.UdpReceiveNotify += NetWorkHelper_UdpReceiveNotify;
-            }
-            catch (Exception e)
-            {
-                MessageBox.Show(e.Message);
-            }
-
-        }
-
-        public delegate void NetWorkConnectCallback();
-
-        public void NetWorkConnectStateCallbackFunction() 
-        {
-            txtOutputBox.Text += "连接成功\r\n";
-            btnStartNet.IsEnabled = true;
-            cbxProtocolType.IsEnabled = false;
-            cbxRemoteHostAddress.IsEnabled = false;
-            txtRemoteHostPort.IsEnabled = false;
-            lblNetWorkLinkState.Content = "已连接";
-            lblNetWorkLinkState.Background = Brushes.Green;
- 
-            switch (cbxProtocolType.Text)
-            {
-                case "Tcp Client":
-                    btnStartNet.Content = "断开";
-                    break;
-                case "Tcp Servers":
-                    btnStartNet.Content = "关闭";
-                    lblTcpServersClient.Visibility = Visibility.Visible;
-                    cbxAddressOfClient.Visibility = Visibility.Visible;
-                    break;
-                case "UDP":
-                    btnStartNet.Content = "关闭";
-                    break;
-                default:
-                    break;
-            }
-        }
-        //StartNet事件
-        private void btnStartNet_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (communication==null)
-                {
-                    InitNetWork();
-                    return;
-                }
-
-                if (communication.isConnected)
-                {
-                    communication.Disconnect();
-                    lblNetWorkLinkState.Content = "已断开";
-                    txtOutputBox.Text += "已断开\r\n";
-                    cbxProtocolType.IsEnabled = true;
-                    cbxRemoteHostAddress.IsEnabled = true;
-                    txtRemoteHostPort.IsEnabled = true;
-                    lblNetWorkLinkState.Background = Brushes.White;
-                    switch (cbxProtocolType.Text)
-                    {
-                        case "Tcp Client":
-                            btnStartNet.Content = "连接";
-                            break;
-                        case "Tcp Servers":
-                            btnStartNet.Content = "打开";
-                            lblTcpServersClient.Visibility = Visibility.Hidden;
-                            cbxAddressOfClient.Visibility = Visibility.Hidden;
-                            break;
-                        case "UDP":
-                            btnStartNet.Content = "打开";
-                            break;
-                        default:
-                            break;
-                    }
-                }
-                else
-                {
-                    InitNetWork();
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-                return;
-            }
-        }
-
-        //连接状态检测
-        int ConnectCount = 0;
-        private  void NewWorkConnectStateCheckTimer(object state)
-        {
-            ConnectCount++;
-
-            if (communication.isConnected)
-            {
-                ConnectCount = 0; 
-                netWorkConnectTimer.Dispose();
-
-            }
-            if (ConnectCount >= 3)
-            {
-                Dispatcher.Invoke(new Action(() => 
-                {
-                    btnStartNet.IsEnabled = true;
-                    txtOutputBox.Text += "连接超时\r\n";
-                }));
-                ConnectCount = 0;
-                netWorkConnectTimer.Dispose();
-            }
-        }
-
-        public delegate void NetWorkReceiveDelegate(byte[] receiveBytes);
-
-        //UDP接收数据回调函数
-        public void NetWorkReceiveCallBackMethod(byte[] receiveBytes)
-        {
-            Dispatcher.Invoke(new Action(() =>
-            {
-                switch (btnSwtichOutputCode.Content.ToString() ?? string.Empty.ToUpper())
-                {
-                    case "ASCII":
-                        string receiveString = Encoding.ASCII.GetString(receiveBytes);
-                        txtOutputBox.Text += receiveString;
-                        txtOutputBox.ScrollToEnd();
-                        break;
-                    case "HEX":
-                        txtOutputBox.Text += " " + BitConverter.ToString(receiveBytes).Replace("-", " ");
-                        txtOutputBox.ScrollToEnd();
-                        break;
-                    default:
-                        break;
-                }
-            }));
-        }
+        //----------------------------------------------------------------------------------------------------------------------------------------------------------------
     }
-    //--------------------------------------------------------------------------------
 }
