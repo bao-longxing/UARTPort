@@ -1,0 +1,24 @@
+﻿<Window x:Class="UARTPort.OelDBExcelDataChangeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UARTPort"
+        mc:Ignorable="d"
+        Title="OelDBExcelDataChangeWindow" Height="362" Width="271">
+    <Grid>
+        <Label Content="Count" HorizontalAlignment="Left" Margin="65,31,0,0" VerticalAlignment="Top"/>
+        <Label Content="PortNumber" HorizontalAlignment="Left" Margin="29,56,0,0" VerticalAlignment="Top"/>
+        <Label Content="Date" HorizontalAlignment="Left" Margin="73,86,0,0" VerticalAlignment="Top"/>
+        <Label Content="State" HorizontalAlignment="Left" Margin="71,111,0,0" VerticalAlignment="Top"/>
+        <Label Content="Data" HorizontalAlignment="Left" Margin="73,141,0,0" VerticalAlignment="Top"/>
+        <TextBox x:Name="txtCountShouldBeChanged" HorizontalAlignment="Left" Margin="119,35,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120"/>
+        <TextBox x:Name="txtPortNumberShouldBeChanged" HorizontalAlignment="Left" Margin="119,60,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120"/>
+        <TextBox x:Name="txtDateShouldBeChanged" HorizontalAlignment="Left" Margin="119,90,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120"/>
+        <TextBox x:Name="txtStateShouldBeChanged" HorizontalAlignment="Left" Margin="119,115,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120"/>
+        <TextBox x:Name="txtDataShouldBeChanged" HorizontalAlignment="Left" Margin="119,145,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="120" Height="87"/>
+        <Button x:Name="btnOK" Content="确定" HorizontalAlignment="Left" Margin="46,266,0,0" VerticalAlignment="Top" Height="36" Width="66"/>
+        <Button x:Name="btnCancel" Content="取消" HorizontalAlignment="Left" Margin="146,266,0,0" VerticalAlignment="Top" Height="36" Width="66"/>
+
+    </Grid>
+</Window>

@@ -7,6 +7,10 @@ using System.Drawing;
 using System.Windows.Media;
 using System.Text;
 using Microsoft.Win32;
+using System.Windows.Controls;
+using System.Collections.ObjectModel;
+using System.Windows.Data;
+using NPOI.SS.Formula.Functions;
 namespace UARTPort
 {
     /// <summary>
@@ -25,10 +29,10 @@ namespace UARTPort
         {
             InitializeComponent();
             InitPortAndNetWorkData();
-
             //File
             fileFactor = new FileIOFactor();
             this.Closing += MainWindow_Closing;
+            
         }
 
         //在窗口关闭前关闭文件类避免保存失败
@@ -484,8 +488,151 @@ namespace UARTPort
 
 
         //文件相关----------------------------------------------------------------------------------------------------------------------------------------------------------
-       
-        bool isOnlyRead = false;//只读打开标志用于在没有打开任何连接时初始化文件类
+        
+        bool IsOnlyRead = false;//只读打开标志用于在没有打开任何连接时初始化文件类
+        ObservableCollection<SerialData>? serialDatas;
+        OelDBExcelDataChangeWindow changeWindow;
+        bool IsUpdate = false;//区分更新和添加
+        public void HideListView()
+        {
+            lvOleData.Visibility = Visibility.Hidden;
+        }
+        public void ShowListView()
+        {
+            //Style
+            GridView gridView = new GridView();
+            double width = txtOutputBox.Width;
+            double height = txtOutputBox.Height;
+            lvOleData.Margin = new Thickness(270, 65, 50, 253);
+            lvOleData.Width = width;
+            lvOleData.Height = height;
+
+
+            //添加列
+            gridView.Columns.Add(new GridViewColumn
+            {
+                Header = "Count",
+                DisplayMemberBinding = new Binding("Count"),
+                Width = 50
+            });
+            gridView.Columns.Add(new GridViewColumn
+            {
+                Header = "PortNumber",
+                DisplayMemberBinding = new Binding("PortNumber"),
+                Width = 100
+            });
+            gridView.Columns.Add(new GridViewColumn
+            {
+                Header = "Date",
+                DisplayMemberBinding = new Binding("Date"),
+                Width = 100
+            });
+            gridView.Columns.Add(new GridViewColumn
+            {
+                Header = "State",
+                DisplayMemberBinding = new Binding("State"),
+                Width = 100
+            });
+            gridView.Columns.Add(new GridViewColumn
+            {
+                Header = "Data",
+                DisplayMemberBinding = new Binding("Data"),
+                Width = 1000
+            });
+
+            //添加右键菜单并绑定处理函数
+            MenuItem editMenuAdd = new MenuItem { Header = "添加" };
+            editMenuAdd.Click += EditMenuAdd_Click;
+
+            MenuItem editMenuUpdate = new MenuItem { Header = "修改" };
+            editMenuUpdate.Click += EditMenuUpdate_Click;
+
+            MenuItem editMenuDelete = new MenuItem { Header = "删除" };
+            editMenuDelete.Click += EditMenuDelete_Click;
+
+
+
+            lvOleData.ContextMenu.Items.Add(editMenuAdd);
+            lvOleData.ContextMenu.Items.Add(editMenuUpdate);
+            lvOleData.ContextMenu.Items.Add(editMenuDelete);
+
+            lvOleData.View = gridView;
+
+            lvOleData.Visibility = Visibility.Visible;
+        }
+
+        private void EditMenuDelete_Click(object sender, RoutedEventArgs e)
+        {
+            
+            if (lvOleData.SelectedIndex!=-1)
+            {
+                serialDatas.RemoveAt(lvOleData.SelectedIndex);
+            }
+
+            fileIOMannager.UpdateItem(serialDatas);
+
+            MessageBox.Show("OK"); 
+        }
+
+        private void EditMenuUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            IsUpdate = true;
+            if (lvOleData.SelectedItem is SerialData serial)
+            {
+                changeWindow = new OelDBExcelDataChangeWindow();
+                changeWindow.SetUIValue(serial);
+                changeWindow.btnOK.Click += BtnOK_Click;
+                changeWindow.ShowDialog();
+            }
+        }
+
+        private void EditMenuAdd_Click(object sender, RoutedEventArgs e)
+        {
+            IsUpdate = false;
+            changeWindow = new OelDBExcelDataChangeWindow();
+            changeWindow.btnOK.Click += BtnOK_Click;
+            changeWindow.ShowDialog();
+        }
+
+        private void BtnOK_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (IsUpdate==false)
+                {
+                    changeWindow.DialogResult = true;
+
+                    SerialData serialData = new SerialData();
+                    serialData.Count = Convert.ToInt32(changeWindow.txtCountShouldBeChanged.Text);
+                    serialData.PortNumber = changeWindow.txtPortNumberShouldBeChanged.Text;
+                    serialData.Date = changeWindow.txtDateShouldBeChanged.Text;
+                    serialData.State = changeWindow.txtStateShouldBeChanged.Text;
+                    serialData.Data = changeWindow.txtDataShouldBeChanged.Text;
+                    serialDatas.Add(serialData);
+                    fileIOMannager.UpdateItem(serialDatas);
+                }
+                if (IsUpdate==true)
+                {
+                    changeWindow.DialogResult = true;
+
+                    SerialData serialData = new SerialData();
+                    serialData.Count = Convert.ToInt32(changeWindow.txtCountShouldBeChanged.Text);
+                    serialData.PortNumber = changeWindow.txtPortNumberShouldBeChanged.Text;
+                    serialData.Date = changeWindow.txtDateShouldBeChanged.Text;
+                    serialData.State = changeWindow.txtStateShouldBeChanged.Text;
+                    serialData.Data = changeWindow.txtDataShouldBeChanged.Text;
+                    serialDatas[(int)serialData.Count] = serialData;
+                    fileIOMannager.UpdateItem(serialDatas);
+                }
+                
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+           
+        }
+
 
         //打开文件事件
         private void btnOpenFile_Click(object sender, RoutedEventArgs e)
@@ -494,8 +641,8 @@ namespace UARTPort
             {
                 if (fileIOMannager == null)
                 {
-                    isOnlyRead = true;
-                    InitFileIO(isOnlyRead);
+                    IsOnlyRead = true;
+                    InitFileIO(IsOnlyRead);
                 }
                 OpenFileDialog openFileDialog = new OpenFileDialog();
                 openFileDialog.InitialDirectory = AppContext.BaseDirectory;
@@ -510,6 +657,9 @@ namespace UARTPort
                     case "excel":
                         openFileDialog.Filter = "Excel表格|*.xls;*.xlsx|所有文件|*.*";
                         break;
+                    case "OELDB For Excel":
+                        openFileDialog.Filter = "Excel表格|*.xls;*.xlsx|所有文件|*.*";
+                        break;
                     default:
                         break;
                 }
@@ -518,13 +668,23 @@ namespace UARTPort
                 if (openFileDialog.ShowDialog() == true)
                 {
                     string selectedFileName = openFileDialog.FileName;
-                    txtOutputBox.Text = fileIOMannager.Read(selectedFileName);
+                    if (fileIOMannager.FileIOType== "OELDB For Excel")
+                    {
+                        ShowListView();
+
+                        serialDatas = fileIOMannager.Read(selectedFileName, ref lvOleData);
+                    }
+                    else
+                    {
+                        txtOutputBox.Text = fileIOMannager.Read(selectedFileName);
+                    }
+
                 }
-                if (isOnlyRead)
+                if (IsOnlyRead && fileIOMannager.FileIOType!= "OELDB For Excel")
                 {
                     fileIOMannager.Close();
                     fileIOMannager = null;
-                    isOnlyRead = false;
+                    IsOnlyRead = false;
                 }
             }
             catch (Exception ex)
@@ -537,7 +697,7 @@ namespace UARTPort
         public void InitFileIO(bool isReadOnly = false)
         {
             //文件IO
-            string fileType = (bool)rdoUseCvs.IsChecked ? "csv" : (bool)rdoUseExcel.IsChecked ? "excel" : "txt";
+            string fileType = (bool)rdoUseCvs.IsChecked ? "csv" : (bool)rdoUseExcel.IsChecked ? "excel" : (bool)rdoUseTxt.IsChecked ? "txt": "OELDB For Excel";
             fileIOMannager = fileFactor.CreateFileIO(fileType);
             if (isReadOnly == false)
             {

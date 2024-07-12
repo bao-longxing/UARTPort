@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:UARTPort"
         mc:Ignorable="d"
         Title="UARTPort" Height="896" Width="1400">
-    <Grid>
+    <Grid x:Name="rootGrid">
         <Label Content="串口参数" HorizontalAlignment="Left" Margin="30,40,0,0" VerticalAlignment="Top"/>
         <Rectangle HorizontalAlignment="Left" Height="281" Margin="23,65,0,0" Stroke="Black" VerticalAlignment="Top" Width="197"/>
         <ComboBox HorizontalAlignment="Left" Margin="85,80,0,0" VerticalAlignment="Top" Width="120"  Name="cbxProtNumber" SelectedIndex="0"/>
@@ -50,8 +50,19 @@
         <RadioButton x:Name="rdoUseTxt" Content="txt" HorizontalAlignment="Left" Margin="45,660,0,0" VerticalAlignment="Top" GroupName="FileType" IsChecked="True"/>
         <RadioButton x:Name="rdoUseCvs" Content="cvs" HorizontalAlignment="Left" Margin="103,660,0,0" VerticalAlignment="Top" GroupName="FileType"/>
         <RadioButton x:Name="rdoUseExcel" Content="excel" HorizontalAlignment="Left" Margin="157,660,0,0" VerticalAlignment="Top" GroupName="FileType"/>
+        <RadioButton x:Name="rdoUseOELDBForExcel" Content="OEL For Excel" HorizontalAlignment="Left" Margin="45,695,0,0" VerticalAlignment="Top" GroupName="FileType"/>
         <Button x:Name="btnOpenFile" Content="打开文件" HorizontalAlignment="Left" Margin="40,766,0,0" VerticalAlignment="Top" Height="58" Width="160" Click="btnOpenFile_Click"/>
         <Label Content="文件IO类型" HorizontalAlignment="Left" Margin="82,630,0,0" VerticalAlignment="Top"/>
+        <ListView x:Name="lvOleData" d:ItemsSource="{d:SampleData ItemCount=5}" Margin="270,67,52,253" Visibility="Hidden">
+            <ListView.ContextMenu>
+                <ContextMenu/>
+            </ListView.ContextMenu>
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn/>
+                </GridView>
+            </ListView.View>
+        </ListView>
 
     </Grid>
 </Window>

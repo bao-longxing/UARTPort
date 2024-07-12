@@ -4,6 +4,8 @@ using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Data;
 using System.Data.OleDb;
 using System.Diagnostics;
 using System.Formats.Asn1;
@@ -15,6 +17,8 @@ using System.Security.Permissions;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Shapes;
 using static UARTPort.CsvIO;
 
 namespace UARTPort
@@ -34,6 +38,10 @@ namespace UARTPort
             if (fileType == "excel")
             {
                 return new ExcelIO(fileType);
+            }
+            if(fileType == "OELDB For Excel") 
+            {
+                return new OelDBExcleIO(fileType);
             }
             throw new NotImplementedException();
         }
@@ -56,6 +64,12 @@ namespace UARTPort
         public abstract void Write(string value);
         public abstract string Read(string path);
         public abstract void Close();
+
+
+        //OELDBIO
+        public virtual ObservableCollection<SerialData>? Read(string path, ref ListView listView) { return null; }
+        public virtual bool UpdateItem(ObservableCollection<SerialData> serialDatas) { throw new Exception("未定义的基类"); }
+
         public SerialData SplitSerialString(string value)
         {
             serialData = new SerialData();
@@ -224,11 +238,11 @@ namespace UARTPort
             using (var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read))
             {
                 IWorkbook workbook = new XSSFWorkbook(fileStream);
-                ISheet sheet = workbook.GetSheetAt(0);
+                ISheet sheet = workbook.GetSheetAt(0);//获取工作表
 
                 for (int rowIndex = 0; rowIndex <= sheet.LastRowNum; rowIndex++)
                 {
-                    IRow row = sheet.GetRow(rowIndex);
+                    IRow row = sheet.GetRow(rowIndex);//获取指定工作行
                     if (row != null) 
                     {
                         for (int colIndex = 0; colIndex < row.LastCellNum; colIndex++)
@@ -269,7 +283,7 @@ namespace UARTPort
             }
 
             SerialData serialData = SplitSerialString(value);
-
+            
             int rowCount = sheet.LastRowNum + 1;
 
             IRow newRow = sheet.CreateRow(rowCount);
@@ -284,6 +298,161 @@ namespace UARTPort
             {
                 fileStream.Seek(0, SeekOrigin.Begin);
                 workbook.Write(fileStream);
+            }
+        }
+    }
+    internal class OelDBExcleIO : FileIOMannager
+    {
+        private string ConnectionString = string.Empty;
+        ObservableCollection<SerialData>? DataSouceForOLEDB;
+        public OelDBExcleIO(string fileType)
+        {
+            DataCount = 0;
+            FileIOType = fileType;
+            DataSouceForOLEDB = new ObservableCollection<SerialData>();
+        }
+        public override void Close()
+        {
+
+        }
+
+        public override void InitFileAddressAndStreamClass()
+        {
+
+            IWorkbook workbook = new XSSFWorkbook();
+
+            ISheet sheet = workbook.CreateSheet("Sheet1");
+
+            //新行
+            IRow row = sheet.CreateRow(0);
+            row.CreateCell(0).SetCellValue("Count");
+            row.CreateCell(1).SetCellValue("PortNumber");
+            row.CreateCell(2).SetCellValue("Date");
+            row.CreateCell(3).SetCellValue("State");
+            row.CreateCell(4).SetCellValue("Data");
+
+            //保存
+            FileAddress = AppContext.BaseDirectory + DateTime.Now.ToString().Replace(" ", "").Replace("/", ".").Replace(":", ".") + ".xlsx";
+            using (var fs = new FileStream(FileAddress, FileMode.Create, FileAccess.Write))
+            {
+                workbook.Write(fs);
+            }
+            ConnectionString = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source={FileAddress};Extended Properties='Excel 12.0 Xml;HDR=YES;'";
+        }
+
+        public override ObservableCollection<SerialData>? Read(string path,ref ListView listView)
+        {
+            listView.ItemsSource = DataSouceForOLEDB;
+
+            FileAddress = path;
+
+            ConnectionString = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source={FileAddress};Extended Properties='Excel 12.0 Xml;HDR=YES;'";
+
+            using (var connection = new OleDbConnection(ConnectionString))
+            {
+                connection.Open();
+                string query = "SELECT * FROM [Sheet1$]";
+                using (var command = new OleDbCommand(query, connection))
+                {
+                    using (var adapter = new OleDbDataAdapter(command))
+                    {
+                        DataTable dataTable = new DataTable();
+                        adapter.Fill(dataTable);
+                        // 这里可以对DataTable进行操作，例如读取数据
+                        foreach (DataRow row in dataTable.Rows)
+                        {
+                            SerialData serialData = new SerialData();
+                            serialData.Count = Convert.ToInt32(row.ItemArray[0]);
+                            serialData.PortNumber = Convert.ToString(row.ItemArray[1]);
+                            serialData.Date = Convert.ToString(row.ItemArray[2]);
+                            serialData.State = Convert.ToString(row.ItemArray[3]);
+                            serialData.Data = Convert.ToString(row.ItemArray[4]);
+                            DataSouceForOLEDB.Add(serialData);
+                        }
+                    }
+                }
+            }
+            return DataSouceForOLEDB;
+        }
+        public override bool UpdateItem(ObservableCollection<SerialData> serialDatas)
+        {
+            IWorkbook workbook = new XSSFWorkbook();
+
+            ISheet sheet = workbook.CreateSheet("Sheet1");
+
+            //新行
+            IRow row = sheet.CreateRow(0);
+            row.CreateCell(0).SetCellValue("Count");
+            row.CreateCell(1).SetCellValue("PortNumber");
+            row.CreateCell(2).SetCellValue("Date");
+            row.CreateCell(3).SetCellValue("State");
+            row.CreateCell(4).SetCellValue("Data");
+
+            //保存
+            using (var fs = new FileStream(FileAddress, FileMode.Create, FileAccess.Write))
+            {
+                workbook.Write(fs);
+            }
+
+            using (var connection = new OleDbConnection(ConnectionString))
+            {
+                connection.Open();
+
+                foreach (var item in serialDatas)
+                {
+                    using (var command = new OleDbCommand("INSERT INTO [Sheet1$] ([Count],[PortNumber],[Date],[State],[Data]) VALUES (?,?,?,?,?)", connection))
+                    {
+                        using (var adapter = new OleDbDataAdapter(command))
+                        {
+                            command.Parameters.AddWithValue("Count",item.Count);
+                            command.Parameters.AddWithValue("PortNumber", item.PortNumber);
+                            command.Parameters.AddWithValue("Date", item.Date);
+                            command.Parameters.AddWithValue("State", item.State);
+                            command.Parameters.AddWithValue("Data", item.Data);
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                }
+                
+            }
+            return true;
+        }
+        public override string Read(string path)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void Write(string value)
+        {
+            using (OleDbConnection connection = new OleDbConnection(ConnectionString))
+            {
+                try
+                {
+                    connection.Open();
+
+                    SerialData serialData = SplitSerialString(value); 
+
+                    // 要插入的数据
+                    string insertQuery = "INSERT INTO [Sheet1$] ([Count],PortNumber,[Date],[State],[Data]) VALUES (@Value1, @Value2, @Value3, @Value4, @Value5)";
+
+                    using (OleDbCommand command = new OleDbCommand(insertQuery, connection))
+                    {
+                        // 添加参数并赋值
+                        command.Parameters.AddWithValue("@Value1", serialData.Count.ToString());
+                        command.Parameters.AddWithValue("@Value2", serialData.PortNumber);
+                        command.Parameters.AddWithValue("@Value3", serialData.Date);
+                        command.Parameters.AddWithValue("@Value4", serialData.State);
+                        command.Parameters.AddWithValue("@Value5", serialData.Data);    
+
+                        // 执行命令
+                        int rowsAffected = command.ExecuteNonQuery();
+                        Debug.WriteLine($"{rowsAffected} row(s) inserted.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
             }
         }
     }
